@@ -43,8 +43,8 @@ extern "C" uint32_t arc4random_uniform(uint32_t upper_bound);
 
 const std::string sp_network_filename ("SP-network.c");
 const std::string inverse_sp_network_filename ("inverse-SP-network.c");
-constexpr int SCRAMBLED_VECTOR_NBITS = 64; /* number of bits in the blocks that we are scrambling */
-constexpr int S_BOX_MAX_WIDTH = 6; /* how many bits wide can an S-Box be */
+constexpr int SP_NETWORK_WIDTH = 16; /* number of bits in the SP-network */
+constexpr int S_BOX_MAX_WIDTH = 5; /* how many bits wide can an S-Box be */
 
 /* print out a vector */
 void print_box (std::vector<unsigned> const &v, unsigned columns, unsigned width)
@@ -198,8 +198,8 @@ void emit_sp_network_code (std::ostream &fs, std::string function_name,
 
 void sp_network_generate (void)
 {
-    std::vector<unsigned> in_P_box (SCRAMBLED_VECTOR_NBITS); /* defines the order the bits are picked out of the input block */
-    std::vector<unsigned> out_P_box (SCRAMBLED_VECTOR_NBITS); /* defines the order the bits are placed into the output block */
+    std::vector<unsigned> in_P_box (SP_NETWORK_WIDTH); /* defines the order the bits are picked out of the input block */
+    std::vector<unsigned> out_P_box (SP_NETWORK_WIDTH); /* defines the order the bits are placed into the output block */
     std::vector<unsigned> S_box_width; /* defines the widths of the S-boxes */
     std::vector<std::vector<unsigned>> forward_S_box; /* vector of S-Box vectors */
     std::vector<std::vector<unsigned>> reverse_S_box; /* vector of S-Box vectors */
@@ -208,17 +208,20 @@ void sp_network_generate (void)
     std::chrono::system_clock::time_point start_time, end_time;
     start_time = std::chrono::system_clock::now();
 
-    std::cout << "Generating arbitrary input P-box" << std::endl;
+    std::cout << "Generating a " << std::dec << SP_NETWORK_WIDTH << " bit SP-network, maximum S-box width is "
+              << S_BOX_MAX_WIDTH << " bits" << std::endl << std::endl;
+
+    std::cout << "Input P-box:" << std::endl;
     vector_fill (in_P_box);
-    vector_random_permute (in_P_box);
-    print_box (in_P_box, 8, 2);
+    random_permute (in_P_box);
+    print_box (in_P_box, 16, 2);
 
-    std::cout << std::endl << "Generating arbitrary output P-box" << std::endl;
+    std::cout << std::endl << "Output P-box:" << std::endl;
     vector_fill (out_P_box);
-    vector_random_permute (out_P_box);
-    print_box (out_P_box, 8, 2);
+    random_permute (out_P_box);
+    print_box (out_P_box, 16, 2);
 
-    auto bits_remaining = SCRAMBLED_VECTOR_NBITS;
+    auto bits_remaining = SP_NETWORK_WIDTH;
     while (bits_remaining)
      {
        /* randomly select an S-Box width that isn't wider than the bits remaining or the maximum S-Box width */
@@ -226,14 +229,14 @@ void sp_network_generate (void)
        S_box_width.push_back(w);
        bits_remaining -= w;
      }
-    std::cout << std::endl << "Generated " << std::dec << S_box_width.size() << " random S-Boxes" << std::endl;
-    print_box (S_box_width, 16, 1);
+    std::cout << std::endl << "Generated " << std::dec << S_box_width.size() << " arbitrary S-Boxes" << std::endl;
+    print_box (S_box_width, 32, 1);
 
     for (auto w: S_box_width) /* iterate over all S-Box bit widths */
      {
        std::vector<unsigned> v(1<<w); /* allocate a vector to hold the substitution table for a particular S-Box of bit width w */
        vector_fill (v); /* fill the S-Box to with sequential values */
-       vector_random_permute (v); /* randomly permute those values to create a functional 1 to 1 substitution box */
+       random_permute (v); /* randomly permute those values to create a functional 1 to 1 substitution box */
 
        /* allocate a vector to hold the inverse substitution table for a particular S-Box of bit width w */
        std::vector<unsigned> inverse_v(1<<w);
