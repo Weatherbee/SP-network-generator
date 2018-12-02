@@ -43,8 +43,10 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 extern "C" uint32_t arc4random(void);
 extern "C" uint32_t arc4random_uniform(uint32_t upper_bound);
 
-const std::string sp_network_filename ("SP-network.c");
-const std::string inverse_sp_network_filename ("inverse-SP-network.c");
+const std::string sp_network_filename ("sp-network.c");
+const std::string inverse_sp_network_filename ("inverse-sp-network.c");
+
+#define C_STORAGE_TYPE uint8_t
 constexpr int SP_NETWORK_WIDTH = 16; /* number of bits in the SP-network */
 constexpr int S_BOX_MAX_WIDTH = 5; /* how many bits wide can an S-Box be */
 
