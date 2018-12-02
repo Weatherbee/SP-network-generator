@@ -11,10 +11,9 @@ ifeq ($(UNAME),Darwin)
 	g++ -o sp-generate sp-generate.o
 endif
 
-clean:
-	rm sp-generate
 	rm sp-generate.o
-	rm sp-network.c
-	inverse-sp-network.c
 
-	
+clean:
+	rm -f sp-generate
+	rm -f sp-network.c
+	rm -f inverse-sp-network.c
