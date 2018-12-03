@@ -45,7 +45,7 @@ extern "C" uint32_t arc4random(void);
 extern "C" uint32_t arc4random_uniform(uint32_t upper_bound);
 
 /* BEGIN user controlled settings for this SP-network generation */
-#define SP_NETWORK_BITS 18 /* number of bits in the SP-network */
+#define SP_NETWORK_BITS 32 /* number of bits in the SP-network */
 #define S_BOX_MAX_BITS 6 /* how many bits wide can an S-Box be */
 #define SP_NETWORK_FILENAME "sp-network.c"
 #define INVERSE_SP_NETWORK_FILENAME "inverse-sp-network.c"
@@ -260,9 +260,9 @@ void sp_network_generate (void)
     for (auto n=0;n<S_box_width.size();n++)
      {
        std::cout << std::endl << "S-box " << std::dec << n << " width " << S_box_width[n] << " bit(s):" << std::endl;
-       print_box (forward_S_box[n], 8, 4);
+       print_box (forward_S_box[n], 16, 3);
        std::cout << "inverse S-box " << std::dec << n << " width " << S_box_width[n] << " bit(s):" << std::endl;
-       print_box (reverse_S_box[n], 8, 4);
+       print_box (reverse_S_box[n], 16, 3);
      }
 
     std::cout << std::endl;
