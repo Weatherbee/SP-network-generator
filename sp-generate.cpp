@@ -38,17 +38,23 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <cstdint>
 #include <sstream>
 #include <fstream>
+#include <typeinfo>
 
 /* outside C linkages */
 extern "C" uint32_t arc4random(void);
 extern "C" uint32_t arc4random_uniform(uint32_t upper_bound);
 
-const std::string sp_network_filename ("sp-network.c");
-const std::string inverse_sp_network_filename ("inverse-sp-network.c");
+/* BEGIN user controlled settings for this SP-network generation */
+#define SP_NETWORK_BITS 18 /* number of bits in the SP-network */
+#define S_BOX_MAX_BITS 8 /* how many bits wide can an S-Box be */
+#define SP_NETWORK_FILENAME "sp-network.c"
+#define INVERSE_SP_NETWORK_FILENAME "inverse-sp-network.c"
+/* END user controlled settings for this SP-network generation */
 
-#define C_STORAGE_TYPE uint8_t
-constexpr int SP_NETWORK_WIDTH = 16; /* number of bits in the SP-network */
-constexpr int S_BOX_MAX_WIDTH = 5; /* how many bits wide can an S-Box be */
+const std::string sp_network_filename (SP_NETWORK_FILENAME);
+const std::string inverse_sp_network_filename (INVERSE_SP_NETWORK_FILENAME);
+constexpr size_t BITS_PER_BYTE = 8;
+constexpr size_t SP_NETWORK_SIZE = (SP_NETWORK_BITS/BITS_PER_BYTE)+(SP_NETWORK_BITS%BITS_PER_BYTE?1:0);
 
 /* print out a vector */
 void print_box (std::vector<unsigned> const &v, unsigned columns, unsigned width)
@@ -110,85 +116,85 @@ void vector_fill (std::vector<T,A> &v)
    }
 }
 
-void emit_sp_network_code (std::ostream &fs, std::string function_name,
-                           std::vector<unsigned> S_box_width, std::vector<std::vector<unsigned>> S_box,
-                           std::vector<unsigned> in_P_box, std::vector<unsigned> out_P_box)
+
+void old_emit_sp_network_code (std::ostream &fs, std::string function_name,
+                                         std::vector<unsigned> S_box_width, std::vector<std::vector<unsigned>> S_box,
+                                         std::vector<unsigned> in_P_box, std::vector<unsigned> out_P_box)
 {
     fs << "#include <stdint.h>" << std::endl << std::endl;
-    fs << "uint32_t " << function_name << " (uint32_t A)" << std::endl;
+    fs << "void " << function_name << std::dec << " (uint8_t A[" << SP_NETWORK_SIZE
+       << "], Y[" << SP_NETWORK_SIZE << "])" << std::endl;
     fs << "{" << std::endl;
 
     /* emit S-Box contents */
     fs << "  /* S-box contents */" << std::endl;
     for (auto n=0;n<S_box_width.size();n++)
      {
-       fs << "  const uint16_t SBOX" << std::dec << std::internal << std::setfill('0')
+       fs << "  const uint8_t SBOX" << std::dec << std::internal << std::setfill('0')
           << std::setw(2) << n << "[" << std::setfill(' ') << std::setw(3) << S_box[n].size() << "] = {";
        for (auto S_box_entry=0;S_box_entry<S_box[n].size();S_box_entry++)
         {
-          fs << std::dec << std::right << std::setfill(' ') << std::setw(5) << S_box[n][S_box_entry];
+          fs << std::dec << std::right << std::setfill(' ') << std::setw(3) << S_box[n][S_box_entry];
           if (S_box[n].size()-1==S_box_entry) fs << " };" << std::endl;
           else
            {
              fs << ",";
-             if (7==S_box_entry%8) fs << std::endl << "                                ";
+             if (7==S_box_entry%8) fs << std::endl << "                               ";
            }
          }
      }
 
-    fs << std::endl << "  /* define substitution-permutation network */" << std::endl;
+    fs << std::endl << "  /* Define Substitution-Permutation Network */" << std::endl;
     auto P_box_bit = 0;
     for (auto n=0;n<S_box_width.size();n++)
      {
        /* emit input (A) P_box bits to temporary sbox_N_in extraction */
        for (auto S_box_bit=0;S_box_bit<S_box_width[n];S_box_bit++)
         {
-          auto word_bit = in_P_box[P_box_bit+S_box_bit];
-          uint32_t word_bit_mask = ((uint32_t)0x1)<<word_bit;
+          auto word_index = (in_P_box[P_box_bit+S_box_bit])/BITS_PER_BYTE;
+          auto word_bit = (in_P_box[P_box_bit+S_box_bit])%BITS_PER_BYTE;
+          unsigned word_bit_mask = 0x1<<word_bit;
 
-          if (0==S_box_bit) fs << "  uint32_t SBOX" << std::dec << std::internal
+          if (0==S_box_bit) fs << "  uint8_t SBOX" << std::dec << std::internal
                                << std::setfill('0') << std::setw(2) << n << "_A = ";
-          else fs << "                      ";
+          else fs << "                     ";
 
-          fs << "((A & 0x" << std::hex << std::uppercase << std::noshowbase << std::internal
-                           << std::setfill('0') << std::setw(8) << word_bit_mask << ")";
+          fs << "((A[" << std::dec << word_index << "]&0x" << std::hex << std::uppercase << std::noshowbase
+            << std::internal << std::setfill('0') << std::setw(2) << word_bit_mask << ")";
 
-          if (S_box_bit>word_bit) fs << " << " << std::dec << std::right << std::setfill(' ')
-                                     << std::setw(2) << S_box_bit-word_bit << ")";
-          else if (word_bit>S_box_bit) fs << " >> " << std::dec << std::right << std::setfill(' ')
-                                          << std::setw(2) << word_bit-S_box_bit << ")";
-          else fs << "      )";
+          if (S_box_bit>word_bit) fs << "<<" << std::dec << S_box_bit-word_bit << ")";
+          else if (word_bit>S_box_bit) fs << ">>" << std::dec << word_bit-S_box_bit << ")";
+          else fs << ")";
 
           if (S_box_width[n]-1==S_box_bit) fs << ";" << std::endl;
           else fs << "|" << std::endl;
         }
 
        /* calculating sbox_N_out from sbox_N and sbox_N_in */
-       auto sbox_index_bit_mask = ((uint32_t)0x1<<S_box_width[n])-1;
-       fs << "  uint32_t SBOX" << std::dec << std::internal << std::setfill('0') << std::setw(2) << n << "_Y = SBOX"
-         << std::dec << std::internal << std::setfill('0') << std::setw(2) << n << "[SBOX" << std::setw(2) << n << "_A & 0x"
-         << std::hex << std::uppercase << std::noshowbase << sbox_index_bit_mask << "];" << std::endl;
+       unsigned sbox_index_bit_mask = (0x1<<S_box_width[n])-1;
+       fs << "  uint8_t SBOX" << std::dec << std::internal << std::setfill('0') << std::setw(2) << n << "_Y = SBOX"
+          << std::dec << std::internal << std::setfill('0') << std::setw(2) << n
+          << "[SBOX" << std::setw(2) << n << "_A & 0x"
+          << std::hex << std::uppercase << std::noshowbase << sbox_index_bit_mask << "];" << std::endl;
 
        /* emit output (Y) P_box bits from temporary sbox_N_out result */
        for (auto S_box_bit=0;S_box_bit<S_box_width[n];S_box_bit++)
         {
-          auto word_bit = out_P_box[P_box_bit+S_box_bit];
-          uint32_t word_bit_clear_mask = ~((uint32_t)0x1<<word_bit);
-          uint32_t sbox_bit_mask = (uint32_t)0x1<<S_box_bit;
+          auto word_index = (out_P_box[P_box_bit+S_box_bit])/BITS_PER_BYTE;
+          auto word_bit = (out_P_box[P_box_bit+S_box_bit])%BITS_PER_BYTE;
+          unsigned word_bit_clear_mask = (uint8_t)~(0x1<<word_bit);
+          unsigned sbox_bit_mask = 0x1<<S_box_bit;
 
-          if ((0==n)&&(0==S_box_bit)) fs << "  uint32_t Y = ";
-          else fs << "  Y = (Y & 0x" << std::hex << std::uppercase << std::noshowbase << std::internal
-                  << std::setfill('0') << std::setw(8) << word_bit_clear_mask << ") | ";
+          fs << "  Y[" << std::dec << word_index << "] = (Y[" << word_index << "]&0x"
+            << std::hex << std::uppercase << std::noshowbase << std::internal << std::setfill('0')
+            << std::setw(2) << word_bit_clear_mask
+            << ")|((SBOX" << std::dec << std::internal << std::setfill('0') << std::setw(2) << n << "_Y&0x"
+            << std::hex << std::uppercase << std::noshowbase << std::internal << std::setfill('0')
+            << std::setw(2) << sbox_bit_mask << ")";
 
-          fs << "((SBOX" << std::dec << std::internal << std::setfill('0') << std::setw(2) << n << "_Y & 0x"
-             << std::hex << std::uppercase << std::noshowbase << std::internal
-             << std::setfill('0') << std::setw(8) << sbox_bit_mask << ")";
-
-          if (word_bit>S_box_bit) fs << " << " << std::dec << std::right << std::setfill(' ')
-                                     << std::setw(2) << word_bit-S_box_bit << ")";
-          else if (S_box_bit>word_bit) fs << " >> " << std::dec << std::right << std::setfill(' ')
-                                          << std::setw(2) << S_box_bit-word_bit << ")";
-          else fs << "      )";
+          if (word_bit>S_box_bit) fs << "<<" << std::dec << word_bit-S_box_bit << ")";
+          else if (S_box_bit>word_bit) fs << ">>" << std::dec << S_box_bit-word_bit << ")";
+          else fs << ")";
           fs << ";" << std::endl;
         }
 
@@ -196,40 +202,133 @@ void emit_sp_network_code (std::ostream &fs, std::string function_name,
        P_box_bit += S_box_width[n];
      }
 
-    fs << "  return Y;" << std::endl << "}" << std::endl;
+    fs << "}" << std::endl;
 }
+
+
+// void emit_sp_network_code (std::ostream &fs, std::string function_name,
+//                            std::vector<unsigned> S_box_width, std::vector<std::vector<unsigned>> S_box,
+//                            std::vector<unsigned> in_P_box, std::vector<unsigned> out_P_box)
+// {
+//     fs << "#include <stdint.h>" << std::endl << std::endl;
+//     fs << "void " << function_name << std::dec << " (uint32_t A[" << SP_NETWORK_SIZE
+//        << "], Y[" << SP_NETWORK_SIZE << "])" << std::endl;
+//     fs << "{" << std::endl;
+//
+//     /* emit S-Box contents */
+//     fs << "  /* S-box contents */" << std::endl;
+//     for (auto n=0;n<S_box_width.size();n++)
+//      {
+//        fs << "  const uint8_t SBOX" << std::dec << std::internal << std::setfill('0')
+//           << std::setw(2) << n << "[" << std::setfill(' ') << std::setw(3) << S_box[n].size() << "] = {";
+//        for (auto S_box_entry=0;S_box_entry<S_box[n].size();S_box_entry++)
+//         {
+//           fs << std::dec << std::right << std::setfill(' ') << std::setw(4) << S_box[n][S_box_entry];
+//           if (S_box[n].size()-1==S_box_entry) fs << " };" << std::endl;
+//           else
+//            {
+//              fs << ",";
+//              if (7==S_box_entry%8) fs << std::endl << "                               ";
+//            }
+//          }
+//      }
+//
+//     fs << std::endl << "  /* define substitution-permutation network */" << std::endl;
+//     auto P_box_bit = 0;
+//     for (auto n=0;n<S_box_width.size();n++)
+//      {
+//        /* emit input (A) P_box bits to temporary sbox_N_in extraction */
+//        for (auto S_box_bit=0;S_box_bit<S_box_width[n];S_box_bit++)
+//         {
+//           auto word_bit = in_P_box[P_box_bit+S_box_bit];
+//           uint8_t word_bit_mask = ((uint8_t)0x1)<<word_bit;
+//
+//           if (0==S_box_bit) fs << "  uint32_t SBOX" << std::dec << std::internal
+//                                << std::setfill('0') << std::setw(2) << n << "_A = ";
+//           else fs << "                      ";
+//
+//           fs << "((A & 0x" << std::hex << std::uppercase << std::noshowbase << std::internal
+//                            << std::setfill('0') << std::setw(8) << word_bit_mask << ")";
+//
+//           if (S_box_bit>word_bit) fs << " << " << std::dec << std::right << std::setfill(' ')
+//                                      << std::setw(2) << S_box_bit-word_bit << ")";
+//           else if (word_bit>S_box_bit) fs << " >> " << std::dec << std::right << std::setfill(' ')
+//                                           << std::setw(2) << word_bit-S_box_bit << ")";
+//           else fs << "      )";
+//
+//           if (S_box_width[n]-1==S_box_bit) fs << ";" << std::endl;
+//           else fs << "|" << std::endl;
+//         }
+//
+//        /* calculating sbox_N_out from sbox_N and sbox_N_in */
+//        auto sbox_index_bit_mask = ((uint32_t)0x1<<S_box_width[n])-1;
+//        fs << "  uint32_t SBOX" << std::dec << std::internal << std::setfill('0') << std::setw(2) << n << "_Y = SBOX"
+//          << std::dec << std::internal << std::setfill('0') << std::setw(2) << n << "[SBOX" << std::setw(2) << n << "_A & 0x"
+//          << std::hex << std::uppercase << std::noshowbase << sbox_index_bit_mask << "];" << std::endl;
+//
+//        /* emit output (Y) P_box bits from temporary sbox_N_out result */
+//        for (auto S_box_bit=0;S_box_bit<S_box_width[n];S_box_bit++)
+//         {
+//           auto word_bit = out_P_box[P_box_bit+S_box_bit];
+//           uint32_t word_bit_clear_mask = ~((uint32_t)0x1<<word_bit);
+//           uint32_t sbox_bit_mask = (uint32_t)0x1<<S_box_bit;
+//
+//           if ((0==n)&&(0==S_box_bit)) fs << "  uint32_t Y = ";
+//           else fs << "  Y = (Y & 0x" << std::hex << std::uppercase << std::noshowbase << std::internal
+//                   << std::setfill('0') << std::setw(8) << word_bit_clear_mask << ") | ";
+//
+//           fs << "((SBOX" << std::dec << std::internal << std::setfill('0') << std::setw(2) << n << "_Y & 0x"
+//              << std::hex << std::uppercase << std::noshowbase << std::internal
+//              << std::setfill('0') << std::setw(8) << sbox_bit_mask << ")";
+//
+//           if (word_bit>S_box_bit) fs << " << " << std::dec << std::right << std::setfill(' ')
+//                                      << std::setw(2) << word_bit-S_box_bit << ")";
+//           else if (S_box_bit>word_bit) fs << " >> " << std::dec << std::right << std::setfill(' ')
+//                                           << std::setw(2) << S_box_bit-word_bit << ")";
+//           else fs << "      )";
+//           fs << ";" << std::endl;
+//         }
+//
+//        fs << std::endl;
+//        P_box_bit += S_box_width[n];
+//      }
+//
+//     fs << "  return Y;" << std::endl << "}" << std::endl;
+// }
 
 
 void sp_network_generate (void)
 {
-    std::vector<unsigned> in_P_box (SP_NETWORK_WIDTH); /* defines the order the bits are picked out of the input block */
-    std::vector<unsigned> out_P_box (SP_NETWORK_WIDTH); /* defines the order the bits are placed into the output block */
+    std::vector<unsigned> in_P_box (SP_NETWORK_BITS); /* defines the order the bits are picked out of the input block */
+    std::vector<unsigned> out_P_box (SP_NETWORK_BITS); /* defines the order the bits are placed into the output block */
     std::vector<unsigned> S_box_width; /* defines the widths of the S-boxes */
     std::vector<std::vector<unsigned>> forward_S_box; /* vector of S-Box vectors */
     std::vector<std::vector<unsigned>> reverse_S_box; /* vector of S-Box vectors */
     std::ofstream code_fs; /* file stream for emitting generated C code */
-
     std::chrono::system_clock::time_point start_time, end_time;
+
+    static_assert(BITS_PER_BYTE>=S_BOX_MAX_BITS, "S-box too wide");
+
     start_time = std::chrono::system_clock::now();
 
-    std::cout << "Generating a " << std::dec << SP_NETWORK_WIDTH << " bit SP-network, maximum S-box width is "
-              << S_BOX_MAX_WIDTH << " bits" << std::endl << std::endl;
+    std::cout << "Generating a " << std::dec << SP_NETWORK_BITS << " bit SP-network, maximum S-box width is "
+              << S_BOX_MAX_BITS << " bits" << std::endl << std::endl;
 
     std::cout << "Input P-box:" << std::endl;
     vector_fill (in_P_box);
     random_permute (in_P_box);
-    print_box (in_P_box, 16, 2);
+    print_box (in_P_box, 16, 3);
 
     std::cout << std::endl << "Output P-box:" << std::endl;
     vector_fill (out_P_box);
     random_permute (out_P_box);
-    print_box (out_P_box, 16, 2);
+    print_box (out_P_box, 16, 3);
 
-    auto bits_remaining = SP_NETWORK_WIDTH;
+    auto bits_remaining = SP_NETWORK_BITS;
     while (bits_remaining)
      {
        /* randomly select an S-Box width that isn't wider than the bits remaining or the maximum S-Box width */
-       auto w = arc4random_uniform(std::min(bits_remaining,S_BOX_MAX_WIDTH))+1;
+       auto w = arc4random_uniform(std::min(bits_remaining,S_BOX_MAX_BITS))+1;
        S_box_width.push_back(w);
        bits_remaining -= w;
      }
@@ -268,7 +367,7 @@ void sp_network_generate (void)
     else std::cout << "Opened " << sp_network_filename << " source file." << std::endl;
 
     std::cout << "Generating forward substitution-permutation C code." << std::endl;
-    emit_sp_network_code (code_fs, "sp_network", S_box_width, forward_S_box, in_P_box, out_P_box);
+    old_emit_sp_network_code (code_fs, "sp_network", S_box_width, forward_S_box, in_P_box, out_P_box);
     code_fs.close(); /* close C source file */
 
     std::cout << std::endl;
@@ -281,7 +380,7 @@ void sp_network_generate (void)
     else std::cout << "Opened " << inverse_sp_network_filename << " source file." << std::endl;
 
     std::cout << "Generating reverse substitution-permutation C code." << std::endl;
-    emit_sp_network_code (code_fs, "inverse_sp_network", S_box_width, reverse_S_box, out_P_box, in_P_box);
+    old_emit_sp_network_code (code_fs, "inverse_sp_network", S_box_width, reverse_S_box, out_P_box, in_P_box);
     code_fs.close(); /* close C source file */
 
     end_time = std::chrono::system_clock::now();

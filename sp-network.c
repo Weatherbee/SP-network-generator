@@ -1,60 +1,71 @@
 #include <stdint.h>
 
-uint32_t sp_network (uint32_t A)
+void sp_network (uint8_t A[3], Y[3])
 {
   /* S-box contents */
-  const uint16_t SBOX00[  4] = {    0,    1,    3,    2 };
-  const uint16_t SBOX01[  4] = {    0,    2,    3,    1 };
-  const uint16_t SBOX02[ 16] = {    1,    6,    7,   14,    3,    4,    0,   15,
-                                    2,    5,    9,    8,   13,   10,   12,   11 };
-  const uint16_t SBOX03[  8] = {    1,    7,    4,    5,    0,    3,    2,    6 };
-  const uint16_t SBOX04[ 32] = {    3,   22,   11,    8,   15,   29,    2,    4,
-                                    9,   20,   10,    6,    1,   30,   17,   25,
-                                   27,   21,   24,   18,   28,   26,   31,   19,
-                                    5,   23,   12,    0,   14,    7,   16,   13 };
+  const uint8_t SBOX00[ 32] = { 16, 12,  2, 29, 14,  9,  3, 31,
+                                18, 28, 20,  6,  7,  0,  5,  4,
+                                21,  8, 26, 25, 30, 13,  1, 19,
+                                17, 11, 15, 24, 23, 27, 10, 22 };
+  const uint8_t SBOX01[  2] = {  1,  0 };
+  const uint8_t SBOX02[  4] = {  1,  3,  0,  2 };
+  const uint8_t SBOX03[ 32] = {  3, 29, 27, 10, 30,  4, 25, 13,
+                                 5, 28, 18, 22, 21, 15,  8,  6,
+                                31, 23,  9, 24, 16, 19, 17,  7,
+                                 2, 26, 12,  0, 14,  1, 20, 11 };
+  const uint8_t SBOX04[  4] = {  2,  1,  0,  3 };
+  const uint8_t SBOX05[  4] = {  3,  1,  2,  0 };
+  const uint8_t SBOX06[  2] = {  0,  1 };
 
-  /* define substitution-permutation network */
-  uint32_t SBOX00_A = ((A & 0x00000008) >>  3)|
-                      ((A & 0x00000004) >>  1);
-  uint32_t SBOX00_Y = SBOX00[SBOX00_A & 0x3];
-  uint32_t Y = ((SBOX00_Y & 0x00000001) << 12);
-  Y = (Y & 0xFFFF7FFF) | ((SBOX00_Y & 0x00000002) << 14);
+  /* Define Substitution-Permutation Network */
+  uint8_t SBOX00_A = ((A[0]&0x10)>>4)|
+                     ((A[0]&0x40)>>5)|
+                     ((A[1]&0x40)>>4)|
+                     ((A[1]&0x04)<<1)|
+                     ((A[0]&0x08)<<1);
+  uint8_t SBOX00_Y = SBOX00[SBOX00_A & 0x1F];
+  Y[0] = (Y[0]&0xFB)|((SBOX00_Y&0x01)<<2);
+  Y[2] = (Y[2]&0xFE)|((SBOX00_Y&0x02)>>1);
+  Y[0] = (Y[0]&0xBF)|((SBOX00_Y&0x04)<<4);
+  Y[1] = (Y[1]&0xFB)|((SBOX00_Y&0x08)>>1);
+  Y[1] = (Y[1]&0xF7)|((SBOX00_Y&0x10)>>1);
 
-  uint32_t SBOX01_A = ((A & 0x00000200) >>  9)|
-                      ((A & 0x00000010) >>  3);
-  uint32_t SBOX01_Y = SBOX01[SBOX01_A & 0x3];
-  Y = (Y & 0xFFFFF7FF) | ((SBOX01_Y & 0x00000001) << 11);
-  Y = (Y & 0xFFFFFFF7) | ((SBOX01_Y & 0x00000002) <<  2);
+  uint8_t SBOX01_A = ((A[0]&0x20)>>5);
+  uint8_t SBOX01_Y = SBOX01[SBOX01_A & 0x1];
+  Y[1] = (Y[1]&0x7F)|((SBOX01_Y&0x01)<<7);
 
-  uint32_t SBOX02_A = ((A & 0x00000040) >>  6)|
-                      ((A & 0x00004000) >> 13)|
-                      ((A & 0x00000020) >>  3)|
-                      ((A & 0x00001000) >>  9);
-  uint32_t SBOX02_Y = SBOX02[SBOX02_A & 0xF];
-  Y = (Y & 0xFFFFFF7F) | ((SBOX02_Y & 0x00000001) <<  7);
-  Y = (Y & 0xFFFFFBFF) | ((SBOX02_Y & 0x00000002) <<  9);
-  Y = (Y & 0xFFFFFFFB) | ((SBOX02_Y & 0x00000004)      );
-  Y = (Y & 0xFFFFFEFF) | ((SBOX02_Y & 0x00000008) <<  5);
+  uint8_t SBOX02_A = ((A[0]&0x02)>>1)|
+                     ((A[1]&0x08)>>2);
+  uint8_t SBOX02_Y = SBOX02[SBOX02_A & 0x3];
+  Y[1] = (Y[1]&0xBF)|((SBOX02_Y&0x01)<<6);
+  Y[0] = (Y[0]&0x7F)|((SBOX02_Y&0x02)<<6);
 
-  uint32_t SBOX03_A = ((A & 0x00000800) >> 11)|
-                      ((A & 0x00002000) >> 12)|
-                      ((A & 0x00000001) <<  2);
-  uint32_t SBOX03_Y = SBOX03[SBOX03_A & 0x7];
-  Y = (Y & 0xFFFFBFFF) | ((SBOX03_Y & 0x00000001) << 14);
-  Y = (Y & 0xFFFFFFDF) | ((SBOX03_Y & 0x00000002) <<  4);
-  Y = (Y & 0xFFFFDFFF) | ((SBOX03_Y & 0x00000004) << 11);
+  uint8_t SBOX03_A = ((A[2]&0x01))|
+                     ((A[0]&0x04)>>1)|
+                     ((A[1]&0x01)<<2)|
+                     ((A[0]&0x01)<<3)|
+                     ((A[1]&0x20)>>1);
+  uint8_t SBOX03_Y = SBOX03[SBOX03_A & 0x1F];
+  Y[0] = (Y[0]&0xFD)|((SBOX03_Y&0x01)<<1);
+  Y[2] = (Y[2]&0xFD)|((SBOX03_Y&0x02));
+  Y[0] = (Y[0]&0xEF)|((SBOX03_Y&0x04)<<2);
+  Y[1] = (Y[1]&0xFD)|((SBOX03_Y&0x08)>>2);
+  Y[0] = (Y[0]&0xFE)|((SBOX03_Y&0x10)>>4);
 
-  uint32_t SBOX04_A = ((A & 0x00000100) >>  8)|
-                      ((A & 0x00008000) >> 14)|
-                      ((A & 0x00000080) >>  5)|
-                      ((A & 0x00000400) >>  7)|
-                      ((A & 0x00000002) <<  3);
-  uint32_t SBOX04_Y = SBOX04[SBOX04_A & 0x1F];
-  Y = (Y & 0xFFFFFFEF) | ((SBOX04_Y & 0x00000001) <<  4);
-  Y = (Y & 0xFFFFFDFF) | ((SBOX04_Y & 0x00000002) <<  8);
-  Y = (Y & 0xFFFFFFFD) | ((SBOX04_Y & 0x00000004) >>  1);
-  Y = (Y & 0xFFFFFFFE) | ((SBOX04_Y & 0x00000008) >>  3);
-  Y = (Y & 0xFFFFFFBF) | ((SBOX04_Y & 0x00000010) <<  2);
+  uint8_t SBOX04_A = ((A[1]&0x80)>>7)|
+                     ((A[0]&0x80)>>6);
+  uint8_t SBOX04_Y = SBOX04[SBOX04_A & 0x3];
+  Y[1] = (Y[1]&0xEF)|((SBOX04_Y&0x01)<<4);
+  Y[1] = (Y[1]&0xFE)|((SBOX04_Y&0x02)>>1);
 
-  return Y;
+  uint8_t SBOX05_A = ((A[2]&0x02)>>1)|
+                     ((A[1]&0x02));
+  uint8_t SBOX05_Y = SBOX05[SBOX05_A & 0x3];
+  Y[0] = (Y[0]&0xF7)|((SBOX05_Y&0x01)<<3);
+  Y[1] = (Y[1]&0xDF)|((SBOX05_Y&0x02)<<4);
+
+  uint8_t SBOX06_A = ((A[1]&0x10)>>4);
+  uint8_t SBOX06_Y = SBOX06[SBOX06_A & 0x1];
+  Y[0] = (Y[0]&0xDF)|((SBOX06_Y&0x01)<<5);
+
 }
